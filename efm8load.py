@@ -33,7 +33,7 @@ class EFM8Loader:
         self.serial          = serial.Serial()
         self.serial.port     = port
         self.serial.baudrate = baud
-        self.serial.timeout  = 0.1
+        self.serial.timeout  = 1
         self.flash_page_size = 512
         self.open_port()
 
@@ -55,7 +55,7 @@ class EFM8Loader:
 
     def send_autobaud_training(self):
         if (self.debug): print("> sending training char 0xFF")
-        for i in range(2):
+        for i in range(1):
             self.send_byte(0xff)
 
     def send_byte(self, b):
@@ -65,6 +65,10 @@ class EFM8Loader:
             sys.exit("ERROR: failed to close serial port") 
 
     def identify_chip(self):
+        #send autobaud training
+        self.send_autobaud_training()
+        #enable flash access
+        self.enable_flash_access()
         #scan for all known ids
         device_ids = { 
                      0x16 : ["EFM8SB2", { } ],
@@ -82,10 +86,11 @@ class EFM8Loader:
                                          }]
                      }
         #append all other possible device ids to this list:
-        for x in range(0xFF):
-            if (x not in device_ids):
-                #not yet, add to list
-                device_ids[x] = ["UNKNOWN_ID_0x%02X" % (x), {} ]
+        if (0):
+            for x in range(0xFF):
+                if (x not in device_ids):
+                    #not yet, add to list
+                    device_ids[x] = ["UNKNOWN_ID_0x%02X" % (x), {} ]
 
         #we will now iterate through all items, sort the dict 
         #in order to process the known ids first
@@ -93,14 +98,15 @@ class EFM8Loader:
 	for device_id, device in sorted_device_ids:
             device_name = device[0]
             device_derivative_ids = device[1]
-            for variant_id in range (0x0F):
+            print("> checking for device %s" % (device_name))
+            for variant_id in range (25):
                 #test all possible variant ids (fixme: what is a valid maximum here?)
                 if (variant_id not in device_derivative_ids):
                      variant_name = "UNKNOWN_VARIANT_ID_0x%02X" % (variant_id)
                 else:
                      variant_name = device_derivative_ids[variant_id]
 
-                if (self.debug): print("> checking for %s (id 0x%02X) - variant %s \t(0x%02X)..." % (device_name, device_id, variant_name, variant_id))
+                #if (self.debug): print("> checking for %s (id 0x%02X) - variant %s \t(0x%02X)..." % (device_name, device_id, variant_name, variant_id))
                 if (self.check_id(device_id, variant_id)):
                     print("> success, detected an %s cpu (%s)" % (device_name, variant_name))
                     return variant_name
@@ -119,7 +125,7 @@ class EFM8Loader:
                 if (length > 16): data_str = data_str + "..."
                 print("> sending $ len=%d cmd=0x%02X data={ %s}" % (length, cmd, data_str))
             self.serial.write('$')
-            self.serial.write(chr(length))
+            self.serial.write(chr(length + 1))
             self.serial.write(chr(cmd))
             self.serial.write(bytearray(data))
 
@@ -131,7 +137,7 @@ class EFM8Loader:
                 return 0   
             else:         
                 res = ord(res_bytes[0])
-                print("> reply 0x%02X" % (res))
+                if(self.debug): print("> reply 0x%02X" % (res))
 		return res 
 
         except serial.SerialException:
@@ -176,7 +182,7 @@ class EFM8Loader:
         length = len(data)
         crc16 = crcmod.predefined.mkCrcFun('xmodem')(str(bytearray(data)))
         
-        print("> verify address 0x%04X (len=%d, crc16=0x%04X)" % (address, length, crc16))
+        if (self.debug): print("> verify address 0x%04X (len=%d, crc16=0x%04X)" % (address, length, crc16))
         start_hi = (address >> 8) & 0xFF
         start_lo = address & 0xFF
         end      = address + length
@@ -190,20 +196,34 @@ class EFM8Loader:
     def download(self, filename):
         print("> dumping flash content to '%s'" % filename)
         print("> please note that this will take long")
+        self.debug = False
+
+        #send autobaud training character
+        self.send_autobaud_training()
+
+        #enable flash access
+        self.enable_flash_access()
 
         #the bootloader protocol does not allow reading flash
         #however it allows to verify written bytes
         #we will exploit this feature to dump the flash contents
         #for now assume 8kb flash
-        flash_size = 10 #8 * 1024
+        flash_size = 8 * 1024
         ih = IntelHex()
         for address in range(flash_size):
-            #test one byte by byte, start with 0xFF (empty flash)
-            for byte in range(0xFF, -1, -1):
-                if (self.verify(address, [byte]) == RESPONSE.ACK):
-                    #success, the flash content on this address euals <byte>
-                    ih[address] = byte
-                    break
+            #test one byte by byte
+            #first check 0x00
+            byte = 0
+            if (self.verify(address, [byte])):
+                ih[address] = byte
+            else:
+                #now start with 0xFF (empty flash)
+                for byte in range(0xFF, -1, -1):
+                    if (self.verify(address, [byte]) == RESPONSE.ACK):
+                        #success, the flash content on this address euals <byte>
+                        ih[address] = byte
+                        break
+            print("> flash[0x%04X] = 0x%02X" % (address, byte))
 
         #done, all flash contents have been read, now store this to the file
         ih.write_hex_file(filename)

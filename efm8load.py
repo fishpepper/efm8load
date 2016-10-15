@@ -26,16 +26,45 @@ class RESPONSE:
     CRC_ERROR   = 0x43
     TO_STR = { ACK: "ACK", RANGE_ERROR : "RANGE_ERROR", BAD_ID : "BAD_ID", CRC_ERROR : "CRC_ERROR" }
 
+    @staticmethod
+    def to_string(res):
+        if res in RESPONSE.TO_STR:
+            return RESPONSE.TO_STR[res]
+        else:
+            return "unknown response"
 
 class EFM8Loader:
     """A python implementation of the EFM8 bootloader protocol"""
+
+    devicelist = {
+                    # DEVICE_ID : [ NAME, { DICT OF VARIANT_IDS } ]
+                    #            VARIANT_ID: VARIANT_ID, VARIANT_NAME, FLASH_SIZE, PAGE_SIZE, SECURITY_PAGE_SIZE]
+                     0x16 : ["EFM8SB2", { } ],
+                     0x30 : ["EFM8BB1", {
+                                         0x01: ["EFM8BB10F8G_QSOP24", 8*1024, 512, 512 ],
+                                         0x02: ["EFM8BB10F8G_QFN20" , 8*1024, 512, 512 ],
+                                         0x03: ["EFM8BB10F8G_SOIC16", 8*1024, 512, 512 ],
+                                         0x05: ["EFM8BB10F4G_QFN20" , 4*1024, 512, 512 ],
+                                         0x08: ["EFM8BB10F2G_QFN20" , 2*1024, 512, 512 ]
+                                         }],
+                      0x32 : ["EFM8BB2", {
+                                         0x01: ["EFM8BB22F16G_QFN28" , 16*1024, 512, 512],
+                                         0x02: ["EFM8BB21F16G_QSOP24", 16*1024, 512, 512],
+                                         0x03: ["EFM8BB21F16G_QFN20" , 16*1024, 512, 512]
+                                         }]
+                 }
+ 
     def __init__(self, port, baud, debug = False):
         self.debug           = debug
         self.serial          = serial.Serial()
         self.serial.port     = port
         self.serial.baudrate = baud
         self.serial.timeout  = 1
+        #defaults
         self.flash_page_size = 512
+        self.flash_size      = 16*1024
+        self.flash_security_size = 512
+        #open serial connection
         self.open_port()
 
     def __del__(self):
@@ -66,52 +95,42 @@ class EFM8Loader:
             sys.exit("ERROR: failed to close serial port") 
 
     def identify_chip(self):
+        print("> checking for device")
+
         #send autobaud training
         self.send_autobaud_training()
+
         #enable flash access
         self.enable_flash_access()
-        #scan for all known ids
-        device_ids = { 
-                     0x16 : ["EFM8SB2", { } ],
-                     0x30 : ["EFM8BB1", { 
-                                         0x01 : "EFM8BB10F8G_QSOP24",                          
-                                         0x02 : "EFM8BB10F8G_QFN20",
-                                         0x03 : "EFM8BB10F8G_SOIC16",
-                                         0x05 : "EFM8BB10F4G_QFN20",
-                                         0x08 : "EFM8BB10F2G_QFN20"
-                                         }],
-                      0x32 : ["EFM8BB2", {       
-                                         0x01 : "EFM8BB22F16G_QFN28",
-                                         0x02 : "EFM8BB21F16G_QSOP24",
-                                         0x03 : "EFM8BB21F16G_QFN20"
-                                         }]
-                     }
-        #append all other possible device ids to this list:
-        if (0):
-            for x in range(0xFF):
-                if (x not in device_ids):
-                    #not yet, add to list
-                    device_ids[x] = ["UNKNOWN_ID_0x%02X" % (x), {} ]
 
-        #we will now iterate through all items, sort the dict 
-        #in order to process the known ids first
-        sorted_device_ids = sorted(device_ids.items(), key=operator.itemgetter(1))
-	for device_id, device in sorted_device_ids:
+        #we will now iterate through all known device ids
+	for device_id, device in self.devicelist.iteritems():
             device_name = device[0]
-            device_derivative_ids = device[1]
-            print("> checking for device %s" % (device_name))
-            for variant_id in range (25):
-                #test all possible variant ids (fixme: what is a valid maximum here?)
-                if (variant_id not in device_derivative_ids):
-                     variant_name = "UNKNOWN_VARIANT_ID_0x%02X" % (variant_id)
-                else:
-                     variant_name = device_derivative_ids[variant_id]
+            variant_ids = device[1]
+            if (self.debug): print("> checking for device %s" % (device_name))
+            for variant_id, config in variant_ids.iteritems():
+                #test all possible variant ids 
+                variant_name = config[0]
 
-                #if (self.debug): print("> checking for %s (id 0x%02X) - variant %s \t(0x%02X)..." % (device_name, device_id, variant_name, variant_id))
                 if (self.check_id(device_id, variant_id)):
-                    print("> success, detected an %s cpu (%s)" % (device_name, variant_name))
-                    return variant_name
-        sys.exit("> ERROR: could not find any device")
+                    print("> success, detected %s cpu (variant %s)" % (device_name, variant_name))
+                    #set up chip data
+                    self.flash_size               = config[1]
+                    self.flash_page_size          = config[2]
+                    self.flash_security_page_size = config[3]
+                    print("> detected %s cpu (variant %s, flash_size=%d, pagesize=%d)" % (device_name, variant_name, self.flash_size, self.flash_page_size))
+                    return 1
+                    
+        #we did not detect a known device, scann all posible ids:
+        for device_id in range(0xFF):
+            print("\r> checking device_id 0x%02X..." % (device_id), end="")
+            sys.stdout.flush()
+            for variant_id in range(24):
+                if (self.check_id(device_id, variant_id)):
+                    sys.exit("\n> ERROR: unknown device detected: id=0x%02X, variant=0x%02X\n"\
+                             "         please add it to the devicelist. will exit now\n" % (device_id, variant_id))
+
+        sys.exit("> ERROR: could not find any device...")
 
     def send(self, cmd, data):
         length = len(data)
@@ -152,7 +171,7 @@ class EFM8Loader:
     def enable_flash_access(self):
         res = self.send(COMMAND.SETUP, [0xA5, 0xF1, 0x00])
         if (res != RESPONSE.ACK):
-            sys.exit("> ERROR enabling flash access, error code 0x%02X (%s)" % (res, RESPONSE.TO_STR[res]))
+            sys.exit("> ERROR enabling flash access, error code 0x%02X (%s)" % (res, RESPONSE.to_string(res)))
 
     def erase_page(self, page):
         start = page * self.flash_page_size
@@ -180,7 +199,7 @@ class EFM8Loader:
         address_lo = address & 0xFF
         res = self.send(COMMAND.WRITE, [address_hi, address_lo] + data)
         if not (res == RESPONSE.ACK):
-            sys.exit("ERROR: write failed at address 0x%04X (response = %s)" % (address, RESPONSE.TO_STR[res]))
+            sys.exit("ERROR: write failed at address 0x%04X (response = %s)" % (address, RESPONSE.to_string(res)))
         return res
  
     def verify(self, address, data):
@@ -201,6 +220,10 @@ class EFM8Loader:
     def download(self, filename):
         print("> dumping flash content to '%s'" % filename)
         print("> please note that this will take long")
+
+        #check for chip
+        self.identify_chip()
+
         self.debug = False
 
         #send autobaud training character
@@ -228,7 +251,10 @@ class EFM8Loader:
                         #success, the flash content on this address euals <byte>
                         ih[address] = byte
                         break
-            print("> flash[0x%04X] = 0x%02X" % (address, byte))
+            print("\r> flash[0x%04X] = 0x%02X" % (address, byte), end="")
+            sys.stdout.flush()
+
+        print("DONE")
 
         #done, all flash contents have been read, now store this to the file
         ih.write_hex_file(filename)
@@ -237,6 +263,9 @@ class EFM8Loader:
     def upload(self, filename):
         print("> uploading file '%s'" % (filename))
         
+        #identify chip
+        self.identify_chip()
+
         #read hex file
         ih = IntelHex()
         ih.loadhex(filename)
@@ -309,19 +338,27 @@ class EFM8Loader:
 
         #all bytes except byte zero were written, do this now
         if (byte_zero != -1):
-            print("> will now write flash[0] = 0x%02X (this will disable bootloader access)" % (byte_zero))
+            print("> will now write flash[0] = 0x%02X" % (byte_zero))
             res = self.write(0, [byte_zero])
             if (res != RESPONSE.ACK):
-                print("> ERROR, write of flash[0] failed (response = %s)" % (RESPONSE.TO_STR[res]))
-                self.erase_page(0) #keep bootloader active!
+                print("> ERROR, write of flash[0] failed (response = %s)" % (RESPONSE.to_string(res)))
+                self.restore_bootloader_autostart()
                 sys.exit("FAILED")
             #verify
             res = self.verify(0, [byte_zero])
             if (res != RESPONSE.ACK):
-                print("> ERROR, verify of flash[0] failed (response = %s)" % (RESPONSE.TO_STR[res]))
-                self.erase_page(0) #keep bootloader active!
+                print("> ERROR, verify of flash[0] failed (response = %s)" % (RESPONSE.to_string(res)))
+                self.self.restore_bootloader_autostarti()
                 sys.exit("FAILED")
-
+ 
+    def restore_bootloader_autostart(self):
+        #the bootloader will always start if flash[0] = 0xFF
+        #in case something went wrong during programming,
+        #call this in order to clear page 0 so that the bootloader 
+        #will always start
+        print("> will now erase page 0 in order to re-enable bootloader autorun");
+        self.erase_page(0)
+        
     def verify_pages_ih(self, ih):
         """ verify written data """
         #do a pagewise compare to find the position of

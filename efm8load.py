@@ -270,7 +270,7 @@ class EFM8Loader:
             print("\r> flash[0x%04X] = 0x%02X" % (address, byte), end="")
             sys.stdout.flush()
 
-        print("DONE")
+        print("\n> finished")
 
         #done, all flash contents have been read, now store this to the file
         ih.write_hex_file(filename)

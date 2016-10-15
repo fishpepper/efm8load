@@ -55,7 +55,7 @@ class EFM8Loader:
 
     def send_autobaud_training(self):
         if (self.debug): print("> sending training char 0xFF")
-        for i in range(1):
+        for i in range(2):
             self.send_byte(0xff)
 
     def send_byte(self, b):
@@ -156,7 +156,10 @@ class EFM8Loader:
     def erase_page(self, page):
         start = page * self.flash_page_size
         end   = start + self.flash_page_size-1
+        start_hi = (start >> 8) & 0xFF
+        start_lo = start & 0xFF
         print("> will erase page %d (0x%04X-0x%04X)" % (page, start, end))
+        return self.send(COMMAND.ERASE, [start_hi, start_lo])
 
     def write(self, address, data):
         if (len(data) > 128):
@@ -185,7 +188,7 @@ class EFM8Loader:
         if (self.debug): print("> verify address 0x%04X (len=%d, crc16=0x%04X)" % (address, length, crc16))
         start_hi = (address >> 8) & 0xFF
         start_lo = address & 0xFF
-        end      = address + length
+        end      = address + length - 1
         end_hi   = (end >> 8) & 0xFF
         end_lo   = end & 0xFF
         crc_hi   = (crc16 >> 8) & 0xFF
@@ -214,7 +217,7 @@ class EFM8Loader:
             #test one byte by byte
             #first check 0x00
             byte = 0
-            if (self.verify(address, [byte])):
+            if (self.verify(address, [byte]) == RESPONSE.ACK):
                 ih[address] = byte
             else:
                 #now start with 0xFF (empty flash)
@@ -241,6 +244,9 @@ class EFM8Loader:
      
         #enable flash access
         self.enable_flash_access()
+        
+        #make sure page 0 gets erased first in order to keep bootloader active
+        self.erase_page(0)
 
 	#erase pages where we are going to write
         self.erase_pages_ih(ih)
@@ -268,7 +274,13 @@ class EFM8Loader:
 
     def write_pages_ih(self, ih):   
         """ write all segments from this ihex to flash"""
-        for start,end in ih.segments():
+        #NOTE: it is important to traverse this in the reversed order
+        #      this makes sure that we write to flash page 0 at the very end
+        #      therefore the bootloader will still be functional in case
+        #      something goes wrong in the process. 
+        #      (the bootloader will be executed as long the first flash 
+        #      content equals 0xFFFF)
+        for start,end in reversed(ih.segments()):
             #fetch data
             data = []
             for x in range(start,end):

@@ -3,6 +3,8 @@ efm8load.py
 
 A python-only implementation of the efm8 bootloader protocol
 
+see http://fishpepper.de/2016/10/15/efm8-bootloader-flash-tool-efm8load-py/ for more info
+
 Status: 
 - tested on EFM8BB10F8G: identify, write, verify and read are working
 

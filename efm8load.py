@@ -1,4 +1,5 @@
 #!/usr/bin/python
+from __future__ import print_function
 import serial
 import argparse
 import sys
@@ -151,7 +152,7 @@ class EFM8Loader:
     def enable_flash_access(self):
         res = self.send(COMMAND.SETUP, [0xA5, 0xF1, 0x00])
         if (res != RESPONSE.ACK):
-            sys.exit("> ERROR enabling flash access, error code 0x%02X (%s)" % (res, RESPONSE.TO_STR(res)))
+            sys.exit("> ERROR enabling flash access, error code 0x%02X (%s)" % (res, RESPONSE.TO_STR[res]))
 
     def erase_page(self, page):
         start = page * self.flash_page_size
@@ -179,7 +180,8 @@ class EFM8Loader:
         address_lo = address & 0xFF
         res = self.send(COMMAND.WRITE, [address_hi, address_lo] + data)
         if not (res == RESPONSE.ACK):
-            sys.exit("ERROR: write failed at address 0x%04X (response = %s)" % (address, RESPONSE.TO_STR(res)))
+            sys.exit("ERROR: write failed at address 0x%04X (response = %s)" % (address, RESPONSE.TO_STR[res]))
+        return res
  
     def verify(self, address, data):
         length = len(data)
@@ -245,16 +247,11 @@ class EFM8Loader:
         #enable flash access
         self.enable_flash_access()
         
-        #make sure page 0 gets erased first in order to keep bootloader active
-        self.erase_page(0)
-
 	#erase pages where we are going to write
         self.erase_pages_ih(ih)
 
         #write all data bytes
         self.write_pages_ih(ih)
-
-        #verify data
         self.verify_pages_ih(ih)
 
     def erase_pages_ih(self, ih):
@@ -269,60 +266,81 @@ class EFM8Loader:
                 if x >= start and x <= end:
                     page_used = True
                     break
-            if (page_used): 
+            #always erase page 0 to retain bootloader access
+            if (page == 0) or (page_used): 
                 self.erase_page(page)
 
     def write_pages_ih(self, ih):   
         """ write all segments from this ihex to flash"""
-        #NOTE: it is important to traverse this in the reversed order
-        #      this makes sure that we write to flash page 0 at the very end
+        #NOTE: it is important to keep flash location 0 
+        #      equal to 0xFF until we are almost finished...
         #      therefore the bootloader will still be functional in case
         #      something goes wrong in the process. 
         #      (the bootloader will be executed as long the first flash 
-        #      content equals 0xFFFF)
-        for start,end in reversed(ih.segments()):
+        #      content equals 0xFF)
+        byte_zero = -1
+        for start,end in ih.segments():
+            print("> writing segment 0x%04X-0x%04X" % (start, end-1))
+
             #fetch data
             data = []
             for x in range(start,end):
                 data.append(ih[x])
             #write in 128byte blobs
             data_pos = 0
+            #keep byte zero 0xFF in order to keep bootloader active (for now)
+            if (start == 0):
+                print("> delaying write of flash[0] = 0x%02X to the end" % (data[0]))
+                byte_zero = data[0]
+                start = start + 1
+                data.pop(0)
             while ((data_pos + start) < end):
                 length = min(128, end - (data_pos + start))
                 self.write(start + data_pos, data[data_pos:data_pos+length])
                 data_pos = data_pos + length
 
+            #now verify this segment
+            print("> verifying segment... ", end="")
+            sys.stdout.flush()
+            if (self.verify(start, data) == RESPONSE.ACK):
+                print("OK")
+            else :
+                sys.exit("FAILURE. will abort now\n")
+
+        #all bytes except byte zero were written, do this now
+        if (byte_zero != -1):
+            print("> will now write flash[0] = 0x%02X (this will disable bootloader access)" % (byte_zero))
+            res = self.write(0, [byte_zero])
+            if (res != RESPONSE.ACK):
+                print("> ERROR, write of flash[0] failed (response = %s)" % (RESPONSE.TO_STR[res]))
+                self.erase_page(0) #keep bootloader active!
+                sys.exit("FAILED")
+            #verify
+            res = self.verify(0, [byte_zero])
+            if (res != RESPONSE.ACK):
+                print("> ERROR, verify of flash[0] failed (response = %s)" % (RESPONSE.TO_STR[res]))
+                self.erase_page(0) #keep bootloader active!
+                sys.exit("FAILED")
+
     def verify_pages_ih(self, ih):
         """ verify written data """
-        last_address = ih.addresses()[-1]
+        #do a pagewise compare to find the position of
+        #the mismatch
+        for start,end in ih.segments():
+            print("> verifying segment 0x%04X-0x%04X... " % (start, end-1), end="")
+            sys.stdout.flush()
 
-        #first: check the whole blob at once:
-        data = []
-        for x in range(last_address + 1):
-            data.append(ih[x])
-        if (self.verify(0, data) == RESPONSE.ACK):
-            #verify succeeded.
-            print("> verify sucessfull")
-            return 1
-        else:
-            #there was a verify mismatch somewhere,
-            #do a pagewise compare to find the position of
-            #the mismatch
-            data_pos = 0
-            while(data_pos < last_address):
-                #build chunks of up to 128 byte
-                length       =  min(128, (last_address-data_pos))
-                data_pos_end = data_pos + length
-                #fetch chunk from ih
-                data=[]
-                for x in range(length):  
-                    data.append(ih[data_pos + x])
-                #send verify request
-                if (self.verify(data_pos, data) == RESPONSE.ACK):
-                    print("> ERROR verify mismatch in between 0x%04X-0x%04X" % (data_pos, data_pos+length))
-                    return 0
-                #prepare for next chunk
-                data_pos = data_pos_end + 1
+            #fetch data
+            data = []
+            for x in range(start,end):
+                data.append(ih[x])
+
+            #calc crc16
+            if (self.verify(start, data) == RESPONSE.ACK):
+                print("OK")
+            else :
+                sys.exit("FAILURE. will abort now\n")
+
         return 1
 
 if __name__ == "__main__":
@@ -343,7 +361,7 @@ if __name__ == "__main__":
     print("########################################")
     print("")
 
-    efm8loader = EFM8Loader(args.port, args.baudrate, debug=True)
+    efm8loader = EFM8Loader(args.port, args.baudrate, debug=False)
 
     if (args.identify):
         efm8loader.identify_chip()

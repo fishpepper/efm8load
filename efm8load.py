@@ -425,6 +425,7 @@ if __name__ == "__main__":
         efm8loader.download(args.read)
     else:
         argp.print_help()
+        sys.exit(1)
 
     print 
-    sys.exit(1)
+    sys.exit(0)

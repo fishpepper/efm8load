@@ -56,6 +56,14 @@ class EFM8Loader:
                     # DEVICE_ID : [ NAME, { DICT OF VARIANT_IDS } ]
                     #            VARIANT_ID: VARIANT_ID, VARIANT_NAME, FLASH_SIZE, PAGE_SIZE, SECURITY_PAGE_SIZE]
                      0x16 : ["EFM8SB2", { } ],
+                     0x25 : ["EFM8SB1", {
+                                         0x01: ["EFM8SB10F8G_QFN24", 8*1024, 512, 512],
+			                 0x02: ["EFM8SB10F8G_QSOP24", 8*1024, 512, 512],
+			                 0x03: ["EFM8SB10F8G_QFN20", 8*1024, 512, 512],
+			                 0x06: ["EFM8SB10F4G_QFN20", 4*1024, 512, 512],
+			                 0x09: ["EFM8SB10F2G_QFN20", 2*1024, 512, 512]			     
+                                         }],
+
                      0x30 : ["EFM8BB1", {
                                          0x01: ["EFM8BB10F8G_QSOP24", 8*1024, 512, 512 ],
                                          0x02: ["EFM8BB10F8G_QFN20" , 8*1024, 512, 512 ],

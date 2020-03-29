@@ -76,9 +76,12 @@ class EFM8Loader:
                                          0x01: ["EFM8BB22F16G_QFN28" , 16*1024, 512, 512],
                                          0x02: ["EFM8BB21F16G_QSOP24", 16*1024, 512, 512],
                                          0x03: ["EFM8BB21F16G_QFN20" , 16*1024, 512, 512]
+                                         }],
+                      0x34 : ["EFM8BB3", {
+                                         0x01: ["EFM8BB31F64G-QFN32" , 64*1024, 512, 512],
                                          }]
                  }
- 
+
     def __init__(self, port, baud, debug = False):
         self.debug           = debug
         self.serial          = serial.Serial()

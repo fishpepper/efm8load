@@ -24,7 +24,7 @@ import crcmod
 from crcmod.predefined import *
 from intelhex import IntelHex
 
-# if you are missing the intelhex package, you can install it by 
+# if you are missing the intelhex package, you can install it by
 # pip install intelhex --user
 # the same goes for the crcmod
 # pip install crcmod --user
@@ -58,10 +58,10 @@ class EFM8Loader:
                      0x16 : ["EFM8SB2", { } ],
                      0x25 : ["EFM8SB1", {
                                          0x01: ["EFM8SB10F8G_QFN24", 8*1024, 512, 512],
-			                 0x02: ["EFM8SB10F8G_QSOP24", 8*1024, 512, 512],
-			                 0x03: ["EFM8SB10F8G_QFN20", 8*1024, 512, 512],
-			                 0x06: ["EFM8SB10F4G_QFN20", 4*1024, 512, 512],
-			                 0x09: ["EFM8SB10F2G_QFN20", 2*1024, 512, 512]			     
+                                         0x02: ["EFM8SB10F8G_QSOP24", 8*1024, 512, 512],
+                                         0x03: ["EFM8SB10F8G_QFN20", 8*1024, 512, 512],
+                                         0x06: ["EFM8SB10F4G_QFN20", 4*1024, 512, 512],
+                                         0x09: ["EFM8SB10F2G_QFN20", 2*1024, 512, 512]
                                          }],
 
                      0x30 : ["EFM8BB1", {
@@ -76,9 +76,12 @@ class EFM8Loader:
                                          0x01: ["EFM8BB22F16G_QFN28" , 16*1024, 512, 512],
                                          0x02: ["EFM8BB21F16G_QSOP24", 16*1024, 512, 512],
                                          0x03: ["EFM8BB21F16G_QFN20" , 16*1024, 512, 512]
+                                         }],
+                      0x34 : ["EFM8BB3", {
+                                         0x01: ["EFM8BB31F64G-QFN32" , 64*1024, 512, 512],
                                          }]
                  }
- 
+
     def __init__(self, port, baud, debug = False):
         self.debug           = debug
         self.serial          = serial.Serial()
@@ -115,9 +118,9 @@ class EFM8Loader:
 
     def send_byte(self, b):
         try:
-            self.serial.write(chr(b)) 
+            self.serial.write(chr(b))
         except serial.SerialException:
-            sys.exit("ERROR: failed to close serial port") 
+            sys.exit("ERROR: failed to close serial port")
 
     def identify_chip(self):
         print("> checking for device")
@@ -129,12 +132,12 @@ class EFM8Loader:
         self.enable_flash_access()
 
         #we will now iterate through all known device ids
-	for device_id, device in self.devicelist.iteritems():
+        for device_id, device in self.devicelist.iteritems():
             device_name = device[0]
             variant_ids = device[1]
             if (self.debug): print("> checking for device %s" % (device_name))
             for variant_id, config in variant_ids.iteritems():
-                #test all possible variant ids 
+                #test all possible variant ids
                 variant_name = config[0]
 
                 if (self.check_id(device_id, variant_id)):
@@ -145,7 +148,7 @@ class EFM8Loader:
                     self.flash_security_page_size = config[3]
                     print("> detected %s cpu (variant %s, flash_size=%d, pagesize=%d)" % (device_name, variant_name, self.flash_size, self.flash_page_size))
                     return 1
-                    
+
         #we did not detect a known device, scann all posible ids:
         for device_id in range(0xFF):
             print("\r> checking device_id 0x%02X..." % (device_id), end="")
@@ -165,7 +168,7 @@ class EFM8Loader:
             sys.exit("> ERROR: invalid data length! allowed 2...130, got %d" % (length))
 
         try:
-            if (self.debug): 
+            if (self.debug):
                 data_str = "".join('0x{:02x} '.format(x) for x in data[:16])
                 if (length > 16): data_str = data_str + "..."
                 print("> sending $ len=%d cmd=0x%02X data={ %s}" % (length, cmd, data_str))
@@ -179,11 +182,11 @@ class EFM8Loader:
             #res_bytes = b"\x40"
             if (len(res_bytes) != 1):
                 sys.exit("> ERROR: serial read timed out")
-                return 0   
-            else:         
+                return 0
+            else:
                 res = ord(res_bytes[0])
                 if(self.debug): print("> reply 0x%02X" % (res))
-		return res 
+                return res
 
         except serial.SerialException:
             sys.exit("ERROR: failed to send data")
@@ -192,7 +195,7 @@ class EFM8Loader:
     def check_id(self, device_id, derivative_id):
         #verify that the given id matches the target
         return self.send(COMMAND.IDENTIFY, [device_id, derivative_id]) == RESPONSE.ACK
-    
+
     def enable_flash_access(self):
         res = self.send(COMMAND.SETUP, [0xA5, 0xF1, 0x00])
         if (res != RESPONSE.ACK):
@@ -216,9 +219,9 @@ class EFM8Loader:
                            "".join('0x{:02x} '.format(x) for x in data[-4:])
         else:
             data_excerpt = "".join('0x{:02x} '.format(x) for x in data)
-                
+
         print("> write at 0x%04X (%3d): %s" % (address, len(data), data_excerpt))
-   
+
         #send request
         address_hi = (address >> 8) & 0xFF
         address_lo = address & 0xFF
@@ -226,11 +229,11 @@ class EFM8Loader:
         if not (res == RESPONSE.ACK):
             sys.exit("ERROR: write failed at address 0x%04X (response = %s)" % (address, RESPONSE.to_string(res)))
         return res
- 
+
     def verify(self, address, data):
         length = len(data)
         crc16 = crcmod.predefined.mkCrcFun('xmodem')(str(bytearray(data)))
-        
+
         if (self.debug): print("> verify address 0x%04X (len=%d, crc16=0x%04X)" % (address, length, crc16))
         start_hi = (address >> 8) & 0xFF
         start_lo = address & 0xFF
@@ -283,11 +286,11 @@ class EFM8Loader:
 
         #done, all flash contents have been read, now store this to the file
         ih.write_hex_file(filename)
-        
+
 
     def upload(self, filename):
         print("> uploading file '%s'" % (filename))
-        
+
         #identify chip
         self.identify_chip()
 
@@ -297,11 +300,11 @@ class EFM8Loader:
 
         #send autobaud training character
         self.send_autobaud_training()
-     
+
         #enable flash access
         self.enable_flash_access()
-        
-	#erase pages where we are going to write
+
+        #erase pages where we are going to write
         self.erase_pages_ih(ih)
 
         #write all data bytes
@@ -321,16 +324,16 @@ class EFM8Loader:
                     page_used = True
                     break
             #always erase page 0 to retain bootloader access
-            if (page == 0) or (page_used): 
+            if (page == 0) or (page_used):
                 self.erase_page(page)
 
-    def write_pages_ih(self, ih):   
+    def write_pages_ih(self, ih):
         """ write all segments from this ihex to flash"""
-        #NOTE: it is important to keep flash location 0 
+        #NOTE: it is important to keep flash location 0
         #      equal to 0xFF until we are almost finished...
         #      therefore the bootloader will still be functional in case
-        #      something goes wrong in the process. 
-        #      (the bootloader will be executed as long the first flash 
+        #      something goes wrong in the process.
+        #      (the bootloader will be executed as long the first flash
         #      content equals 0xFF)
         byte_zero = -1
         for start,end in ih.segments():
@@ -375,15 +378,15 @@ class EFM8Loader:
                 print("> ERROR, verify of flash[0] failed (response = %s)" % (RESPONSE.to_string(res)))
                 self.self.restore_bootloader_autostarti()
                 sys.exit("FAILED")
- 
+
     def restore_bootloader_autostart(self):
         #the bootloader will always start if flash[0] = 0xFF
         #in case something went wrong during programming,
-        #call this in order to clear page 0 so that the bootloader 
+        #call this in order to clear page 0 so that the bootloader
         #will always start
         print("> will now erase page 0 in order to re-enable bootloader autorun");
         self.erase_page(0)
-        
+
     def verify_pages_ih(self, ih):
         """ verify written data """
         #do a pagewise compare to find the position of
@@ -435,5 +438,5 @@ if __name__ == "__main__":
         argp.print_help()
         sys.exit(1)
 
-    print 
+    print()
     sys.exit(0)

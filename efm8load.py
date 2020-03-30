@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #
 # This file is part of efm8load. efm8load is free software: you can
 # redistribute it and/or modify it under the terms of the GNU General Public
@@ -15,14 +15,14 @@
 #
 # Copyright 2016 fishpepper.de
 #
-from __future__ import print_function
-import serial
 import argparse
-import sys
 import operator
+import sys
+
 import crcmod
-from crcmod.predefined import *
+import serial
 from intelhex import IntelHex
+
 
 # if you are missing the intelhex package, you can install it by
 # pip install intelhex --user
@@ -118,9 +118,9 @@ class EFM8Loader:
 
     def send_byte(self, b):
         try:
-            self.serial.write(chr(b))
+            self.serial.write(b.to_bytes(1, 'little'))
         except serial.SerialException:
-            sys.exit("ERROR: failed to close serial port")
+            sys.exit("ERROR: failed to send byte to serial port")
 
     def identify_chip(self):
         print("> checking for device")
@@ -132,11 +132,11 @@ class EFM8Loader:
         self.enable_flash_access()
 
         #we will now iterate through all known device ids
-        for device_id, device in self.devicelist.iteritems():
+        for device_id, device in self.devicelist.items():
             device_name = device[0]
             variant_ids = device[1]
             if (self.debug): print("> checking for device %s" % (device_name))
-            for variant_id, config in variant_ids.iteritems():
+            for variant_id, config in variant_ids.items():
                 #test all possible variant ids
                 variant_name = config[0]
 
@@ -172,9 +172,9 @@ class EFM8Loader:
                 data_str = "".join('0x{:02x} '.format(x) for x in data[:16])
                 if (length > 16): data_str = data_str + "..."
                 print("> sending $ len=%d cmd=0x%02X data={ %s}" % (length, cmd, data_str))
-            self.serial.write('$')
-            self.serial.write(chr(length + 1))
-            self.serial.write(chr(cmd))
+            self.serial.write(b'$')
+            self.serial.write((length + 1).to_bytes(1, 'little'))
+            self.serial.write(cmd.to_bytes(1, 'little'))
             self.serial.write(bytearray(data))
 
             #read back reply
@@ -184,7 +184,7 @@ class EFM8Loader:
                 sys.exit("> ERROR: serial read timed out")
                 return 0
             else:
-                res = ord(res_bytes[0])
+                res = res_bytes[0]
                 if(self.debug): print("> reply 0x%02X" % (res))
                 return res
 
@@ -232,7 +232,7 @@ class EFM8Loader:
 
     def verify(self, address, data):
         length = len(data)
-        crc16 = crcmod.predefined.mkCrcFun('xmodem')(str(bytearray(data)))
+        crc16 = crcmod.predefined.mkCrcFun('xmodem')(bytearray(data))
 
         if (self.debug): print("> verify address 0x%04X (len=%d, crc16=0x%04X)" % (address, length, crc16))
         start_hi = (address >> 8) & 0xFF
@@ -414,11 +414,12 @@ if __name__ == "__main__":
     group = argp.add_mutually_exclusive_group()
     group.add_argument("-w", "--write", metavar="filename", help="upload the given hex file to the flash memory")
     group.add_argument("-r", "--read", metavar="filename", help="download the flash memory contents to the given filename") #action="store_true", nargs=1)
-    group.add_argument("-i", "--identify", help="identify the chip", action="store_true") #action="store_true", nargs=0)
+    group.add_argument("-i", "--identify", help="identify the chip", action="store_true")
 
     #argp.add_argument('filename', help='firmware file to upload to the mcu')
     argp.add_argument('-b', '--baudrate', type=int, default=115200, help='baudrate (default is 115200 baud)')
     argp.add_argument('-p', '--port', default="/dev/ttyUSB0", help='port (default is /dev/ttyUSB0)')
+    argp.add_argument("-v", "--verbose", action='store_true', help="Verbose mode")
     args = argp.parse_args()
 
     print("########################################")
@@ -426,7 +427,7 @@ if __name__ == "__main__":
     print("########################################")
     print("")
 
-    efm8loader = EFM8Loader(args.port, args.baudrate, debug=False)
+    efm8loader = EFM8Loader(args.port, args.baudrate, debug=args.verbose)
 
     if (args.identify):
         efm8loader.identify_chip()

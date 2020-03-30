@@ -13,7 +13,7 @@
 # this program; if not, write to the Free Software Foundation, Inc., 51
 # Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# Copyright 2016 fishpepper.de
+# Copyright 2020 fishpepper.de
 #
 import argparse
 import operator
@@ -24,10 +24,11 @@ import serial
 from intelhex import IntelHex
 
 
-# if you are missing the intelhex package, you can install it by
-# pip install intelhex --user
-# the same goes for the crcmod
-# pip install crcmod --user
+# make sure to install the python3 modules for serial, crcmod, and pip3:
+# sudo apt intstall python3-crcmod python3-serial python3-pip
+# if you are missing the intelhex package, you can install it afterwars by
+# pip3 install intelhex --user
+
 class COMMAND:
     IDENTIFY = 0x30
     SETUP    = 0x31
@@ -419,11 +420,11 @@ if __name__ == "__main__":
     #argp.add_argument('filename', help='firmware file to upload to the mcu')
     argp.add_argument('-b', '--baudrate', type=int, default=115200, help='baudrate (default is 115200 baud)')
     argp.add_argument('-p', '--port', default="/dev/ttyUSB0", help='port (default is /dev/ttyUSB0)')
-    argp.add_argument("-v", "--verbose", action='store_true', help="Verbose mode")
+    argp.add_argument('-v', '--verbose', action='store_true', help='Verbose mode')
     args = argp.parse_args()
 
     print("########################################")
-    print("# efm8load.py - (c) 2016 fishpepper.de #")
+    print("# efm8load.py - (c) 2020 fishpepper.de #")
     print("########################################")
     print("")
 

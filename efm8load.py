@@ -35,6 +35,7 @@ class COMMAND:
     ERASE    = 0x32
     WRITE    = 0x33
     VERIFY   = 0x34
+    RESET    = 0x36
 
 class RESPONSE:
     ACK         = 0x40
@@ -160,6 +161,12 @@ class EFM8Loader:
                              "         please add it to the devicelist. will exit now\n" % (device_id, variant_id))
 
         sys.exit("> ERROR: could not find any device...")
+
+    def send_reset(self):
+        print("> send reset command")
+
+        if (self.send(COMMAND.RESET, [255, 255]) == RESPONSE.ACK):
+            print("> success, device restarted...")
 
     def send(self, cmd, data):
         length = len(data)
@@ -416,6 +423,7 @@ if __name__ == "__main__":
     group.add_argument("-w", "--write", metavar="filename", help="upload the given hex file to the flash memory")
     group.add_argument("-r", "--read", metavar="filename", help="download the flash memory contents to the given filename") #action="store_true", nargs=1)
     group.add_argument("-i", "--identify", help="identify the chip", action="store_true")
+    group.add_argument("-s", "--reset", help="send reset command", action="store_true")
 
     #argp.add_argument('filename', help='firmware file to upload to the mcu')
     argp.add_argument('-b', '--baudrate', type=int, default=115200, help='baudrate (default is 115200 baud)')
@@ -436,6 +444,8 @@ if __name__ == "__main__":
         efm8loader.upload(args.write)
     elif (args.read):
         efm8loader.download(args.read)
+    elif (args.reset):
+        efm8loader.send_reset()
     else:
         argp.print_help()
         sys.exit(1)

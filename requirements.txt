@@ -1,0 +1,4 @@
+crcmod==1.7
+intelhex==2.3.0
+pyserial==3.5
+tqdm==4.66.4

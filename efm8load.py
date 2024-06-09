@@ -21,13 +21,12 @@ import sys
 
 import crcmod
 import serial
+from tqdm import tqdm
+from collections import Counter
 from intelhex import IntelHex
 
-
-# make sure to install the python3 modules for serial, crcmod, and pip3:
+# make sure to install the python modules for pyserial, tqdm, crcmod, intelhex:
 # sudo apt intstall python3-crcmod python3-serial python3-pip
-# if you are missing the intelhex package, you can install it afterwars by
-# pip3 install intelhex --user
 
 class COMMAND:
     IDENTIFY = 0x30
@@ -81,6 +80,9 @@ class EFM8Loader:
                                          }],
                       0x34 : ["EFM8BB3", {
                                          0x01: ["EFM8BB31F64G-QFN32" , 64*1024, 512, 512],
+                                         }],
+                      0x39 : ["EFM8BB5", {
+                                         0x08: ["EFM8BB52F32G-QFN32" , 15*2048, 2048, 2048],
                                          }]
                  }
 
@@ -271,30 +273,41 @@ class EFM8Loader:
         #the bootloader protocol does not allow reading flash
         #however it allows to verify written bytes
         #we will exploit this feature to dump the flash contents
-        #for now assume 8kb flash
-        flash_size = 8 * 1024
+
         ih = IntelHex()
-        for address in range(flash_size):
-            #test one byte by byte
-            #first check 0x00
-            byte = 0
-            if (self.verify(address, [byte]) == RESPONSE.ACK):
-                ih[address] = byte
-            else:
-                #now start with 0xFF (empty flash)
-                for byte in range(0xFF, -1, -1):
-                    if (self.verify(address, [byte]) == RESPONSE.ACK):
-                        #success, the flash content on this address euals <byte>
-                        ih[address] = byte
-                        break
-            print("\r> flash[0x%04X] = 0x%02X" % (address, byte), end="")
-            sys.stdout.flush()
 
-        print("\n> finished")
+        # generate list with all possible hex adress values
+        byte_list = Counter()
+        for byte in range(0xFF, -1, -1):
+            byte_list[byte] += 1
 
-        #done, all flash contents have been read, now store this to the file
-        ih.write_hex_file(filename)
 
+        for address in tqdm(
+            range(self.flash_size),
+            desc="Dumping Flash",
+            unit=" Bytes",
+            ascii=" #",
+            smoothing=0.01,
+            dynamic_ncols=True,
+            unit_scale=True,
+        ):  
+            sorted_byte_list = byte_list.most_common()
+            for curr_byte in sorted_byte_list:
+                byte=curr_byte[0]
+                if (self.verify(address, [byte]) == RESPONSE.ACK):
+                    #success, the flash content on this address equals <byte>
+                    ih[address] = byte
+                    byte_list[byte] += 1
+                    break
+            #print(" flash[0x%04X] = 0x%02X" % (address, byte))
+        print("\n> finished dumping")
+
+        #done, all flash contents have been read, now store this to the files
+        ih.tofile("dumps/" + filename, format='hex')
+        ih.tofile("dumps/" + filename + ".bin", format='bin')
+
+        print("\n> dump written to disk successfully")
+        print("\n> done")
 
     def upload(self, filename):
         print("> uploading file '%s'" % (filename))

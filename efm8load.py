@@ -84,7 +84,7 @@ class EFM8Loader:
                                          }],
                       0x39 : ["EFM8BB51", {
                                          0x14: ["EFM8BB51F16G_TSSOP20", 16*1024, 512, 512],
-                            }]
+                                         }]
                  }
 
     def __init__(self, port, baud, debug = False):
